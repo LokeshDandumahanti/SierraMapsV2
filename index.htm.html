@@ -1,0 +1,638 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>SierraMaps ~ Comprehensive Mapping Application</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <!-- Bootstrap -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+
+  <!-- Leaflet & Leaflet Draw -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css" />
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
+
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <style>
+    body { 
+      margin: 0; 
+      font-family: Arial, sans-serif;
+      padding-top: 10px; 
+    }
+    .navbar-brand {
+      font-size: 1.5rem;
+      font-weight: bold;
+    }
+    #map { 
+      height: 60vh; 
+      width: 100%; 
+      margin-bottom: 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    .tab-content {
+      padding: 15px;
+      border: 1px solid #dee2e6;
+      border-top: none;
+      border-radius: 0 0 8px 8px;
+      background-color: #fff;
+      margin-bottom: 20px;
+    }
+    .traffic-list { 
+      max-height: 300px; 
+      overflow-y: auto; 
+    }
+    .traffic-item { 
+      border-bottom: 1px solid #ccc; 
+      padding: 10px 0; 
+    }
+    .place-card { 
+      margin-bottom: 15px; 
+    }
+    #elevationChart { 
+      height: 300px;
+      width: 100%;
+      margin-top: 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    .input-group {
+      margin-bottom: 10px;
+    }
+  </style>
+</head>
+<body>
+<div class="container py-3">
+  <nav class="navbar navbar-expand-lg navbar-light bg-light mb-4">
+    <div class="container-fluid">
+      <a class="navbar-brand" href="#">
+        <img src="/api/placeholder/32/32" alt="Logo" width="32" height="32" class="d-inline-block align-text-top me-2">
+        SierraMaps
+      </a>
+      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+        <span class="navbar-toggler-icon"></span>
+      </button>
+      <div class="collapse navbar-collapse" id="navbarNav">
+        <ul class="nav nav-tabs" id="mapTabs" role="tablist">
+          <li class="nav-item" role="presentation">
+            <button class="nav-link active" id="route-tab" data-bs-toggle="tab" data-bs-target="#route-panel" type="button" role="tab" aria-selected="true">Routing</button>
+          </li>
+          <li class="nav-item" role="presentation">
+            <button class="nav-link" id="elevation-tab" data-bs-toggle="tab" data-bs-target="#elevation-panel" type="button" role="tab" aria-selected="false">Elevation</button>
+          </li>
+          <li class="nav-item" role="presentation">
+            <button class="nav-link" id="places-tab" data-bs-toggle="tab" data-bs-target="#places-panel" type="button" role="tab" aria-selected="false">Nearby Places</button>
+          </li>
+        </ul>
+      </div>
+      <div class="d-flex">
+        <input id="apiKey" class="form-control me-2" placeholder="Enter your API Key">
+      </div>
+    </div>
+  </nav>
+
+  <div id="map"></div>
+
+  <div class="tab-content" id="mapTabContent">
+    <!-- Routing Tab -->
+    <div class="tab-pane fade show active" id="route-panel" role="tabpanel" aria-labelledby="route-tab">
+      <div class="row mb-3">
+        <div class="col-md-5">
+          <div class="input-group">
+            <span class="input-group-text">From</span>
+            <input id="start" class="form-control" placeholder="Start (Address or lat,lng)">
+          </div>
+        </div>
+        <div class="col-md-5">
+          <div class="input-group">
+            <span class="input-group-text">To</span>
+            <input id="end" class="form-control" placeholder="End (Address or lat,lng)">
+          </div>
+        </div>
+        <div class="col-md-2">
+          <button class="btn btn-primary w-100" onclick="handleRouting()">Get Route</button>
+        </div>
+      </div>
+
+      <h5>Traffic Alerts</h5>
+      <div id="trafficAlerts" class="traffic-list"></div>
+    </div>
+
+    <!-- Elevation Tab -->
+    <div class="tab-pane fade" id="elevation-panel" role="tabpanel" aria-labelledby="elevation-tab">
+      <div class="row mb-3">
+        <div class="col-md-5">
+          <div class="input-group">
+            <span class="input-group-text">From</span>
+            <input id="elevationStart" class="form-control" placeholder="Start address">
+          </div>
+        </div>
+        <div class="col-md-5">
+          <div class="input-group">
+            <span class="input-group-text">To</span>
+            <input id="elevationEnd" class="form-control" placeholder="End address">
+          </div>
+        </div>
+        <div class="col-md-2">
+          <button class="btn btn-success w-100" onclick="getElevationProfile()">Show Elevation</button>
+        </div>
+      </div>
+      <canvas id="elevationChart"></canvas>
+    </div>
+
+    <!-- Places Tab -->
+    <div class="tab-pane fade" id="places-panel" role="tabpanel" aria-labelledby="places-tab">
+      <div class="row mb-3">
+        <div class="col-md-12">
+          <p class="alert alert-info">Draw a rectangle on the map to select an area, then click "Find Nearby Places".</p>
+        </div>
+        <div class="col-md-12">
+          <button class="btn btn-success" onclick="fetchPlaces()">Find Nearby Places</button>
+        </div>
+      </div>
+      <div id="placesContainer" class="row"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // Initialize the map
+  const map = L.map('map').setView([37.78, -122.43], 13);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 18,
+    attribution: '© OpenStreetMap'
+  }).addTo(map);
+
+  // Global variables
+  let routeLine = null;
+  let trafficLines = [];
+  let drawnItems = new L.FeatureGroup().addTo(map);
+  let markerLayer = new L.LayerGroup().addTo(map);
+  let bbox = null;
+  const SAMPLE_COUNT = 20; // For elevation sampling
+  const BASE_URL = "https://sierramaps.ftp.sh/api";
+
+  // Set up the draw control for the places feature
+  const drawControl = new L.Control.Draw({
+    draw: {
+      polygon: false,
+      circle: false,
+      marker: false,
+      polyline: false,
+      circlemarker: false,
+      rectangle: {
+        shapeOptions: {
+          color: '#007bff'
+        }
+      }
+    },
+    edit: {
+      featureGroup: drawnItems,
+      edit: false,
+      remove: true
+    }
+  });
+  map.addControl(drawControl);
+
+  map.on('draw:created', function (e) {
+    drawnItems.clearLayers();
+    drawnItems.addLayer(e.layer);
+
+    const bounds = e.layer.getBounds();
+    bbox = {
+      south: bounds.getSouth(),
+      west: bounds.getWest(),
+      north: bounds.getNorth(),
+      east: bounds.getEast()
+    };
+  });
+
+  // Initialize the tabs
+  document.addEventListener('DOMContentLoaded', function() {
+    const triggerTabList = [].slice.call(document.querySelectorAll('#mapTabs button'));
+    triggerTabList.forEach(function(triggerEl) {
+      const tabTrigger = new bootstrap.Tab(triggerEl);
+      triggerEl.addEventListener('click', function(event) {
+        event.preventDefault();
+        tabTrigger.show();
+      });
+    });
+
+    // Set up event listener for tab changes
+    document.querySelectorAll('#mapTabs button').forEach(tab => {
+      tab.addEventListener('shown.bs.tab', event => {
+        map.invalidateSize(); // Resize map when tab is shown
+      });
+    });
+  });
+
+  // === ROUTING FUNCTIONS ===
+  async function handleRouting() {
+    const apiKey = document.getElementById("apiKey").value.trim();
+    if (!apiKey) return alert("Please enter your API key.");
+
+    const startInput = document.getElementById("start").value.trim();
+    const endInput = document.getElementById("end").value.trim();
+
+    if (!startInput || !endInput) return alert("Please enter both start and end locations.");
+
+    const start = await resolveCoordinates(startInput, apiKey);
+    const end = await resolveCoordinates(endInput, apiKey);
+
+    if (!start || !end) return alert("Invalid start or end location.");
+
+    await getRoute(start, end, apiKey);
+  }
+
+  async function resolveCoordinates(input, apiKey) {
+    const parts = input.split(',');
+    if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+      return { lat: parseFloat(parts[0]), lng: parseFloat(parts[1]) };
+    } else {
+      try {
+        const url = `${BASE_URL}/geocoding/${encodeURIComponent(input)}/?api_key=${apiKey}`;
+        const res = await fetch(url);
+        const data = await res.json();
+        const geoObj = data.resourceSet?.find(r => r.geo && r.geo.latitude && r.geo.longitude);
+        if (geoObj) return { lat: geoObj.geo.latitude, lng: geoObj.geo.longitude };
+      } catch (err) {
+        console.error("Geocoding error:", err);
+      }
+    }
+    return null;
+  }
+
+  async function getRoute(start, end, apiKey) {
+    try {
+      const routeURL = `${BASE_URL}/route/${start.lat},${start.lng}/${end.lat},${end.lng}/1/?api_key=${apiKey}`;
+      const response = await fetch(routeURL);
+      const data = await response.json();
+
+      const route = data.resourceSet?.[0]?.resources?.[0];
+      const coordinates = route?.routePath?.line?.coordinates;
+
+      if (!route || !coordinates?.length) throw new Error("No route coordinates found.");
+
+      // Clear previous route and traffic
+      if (routeLine) map.removeLayer(routeLine);
+      trafficLines.forEach(line => map.removeLayer(line));
+      trafficLines = [];
+
+      const routeCoords = coordinates.map(coord => [coord[0], coord[1]]);
+      routeLine = L.polyline(routeCoords, { color: 'blue', weight: 5 }).addTo(map);
+
+      // Add start and end markers
+      const startMarker = L.marker([start.lat, start.lng], { title: "Start" }).addTo(map);
+      const endMarker = L.marker([end.lat, end.lng], { title: "End" }).addTo(map);
+      trafficLines.push(startMarker, endMarker); // Add to traffic lines array for easy removal
+
+      // Adjust view
+      const [south, west, north, east] = route.bbox;
+      const bounds = L.latLngBounds([south, west], [north, east]);
+      map.fitBounds(bounds);
+
+      // Show route information
+      const travelTime = Math.round(route.travelDurationInSeconds / 60);
+      const distance = (route.travelDistance).toFixed(2);
+      document.getElementById("trafficAlerts").innerHTML = `
+        <div class="alert alert-success">
+          <strong>Route Found:</strong> ${distance} km | ${travelTime} minutes
+        </div>
+      `;
+
+      // Fetch traffic in this bounding box
+      await fetchTraffic(bounds, apiKey);
+
+    } catch (err) {
+      console.error("Route error:", err);
+      alert("Failed to get route.");
+    }
+  }
+
+  async function fetchTraffic(bounds, apiKey) {
+    const south = bounds.getSouth();
+    const west = bounds.getWest();
+    const north = bounds.getNorth();
+    const east = bounds.getEast();
+
+    try {
+      const trafficUrl = `${BASE_URL}/traffic/${south}/${west}/${north}/${east}/?api_key=${apiKey}`;
+      const res = await fetch(trafficUrl);
+      const data = await res.json();
+
+      const incidents = data.trafficIncidents || [];
+      const alertsContainer = document.getElementById("trafficAlerts");
+      
+      // Keep the route summary alert if it exists
+      const routeSummary = alertsContainer.innerHTML.includes("Route Found") ? 
+        alertsContainer.innerHTML : "";
+      
+      if (incidents.length === 0) {
+        alertsContainer.innerHTML = routeSummary + `
+          <div class="alert alert-info mt-3">
+            No traffic incidents found in this area.
+          </div>
+        `;
+        return;
+      }
+
+      const today = new Date().toDateString(); // local date as "Fri Apr 11 2025"
+      incidents.sort((a, b) => extractEpoch(b.start) - extractEpoch(a.start)); // newest first
+
+      let trafficHTML = routeSummary + `<h6 class="mt-3">Found ${incidents.length} traffic incidents:</h6>`;
+
+      for (const incident of incidents) {
+        const epoch = extractEpoch(incident.start);
+        const incidentDate = new Date(epoch);
+        const incidentDateStr = incidentDate.toDateString();
+        const incidentTimeStr = incidentDate.toLocaleTimeString();
+
+        const isToday = incidentDateStr === today;
+
+        // Add to map only if it's today
+        if (isToday) {
+          const lat1 = incident.point.coordinates[0];
+          const lng1 = incident.point.coordinates[1];
+          const lat2 = incident.toPoint?.coordinates?.[0] || lat1;
+          const lng2 = incident.toPoint?.coordinates?.[1] || lng1;
+
+          const line = L.polyline([[lat1, lng1], [lat2, lng2]], {
+            color: 'red',
+            weight: 4,
+            dashArray: '5, 10'
+          }).addTo(map);
+          trafficLines.push(line);
+        }
+
+        trafficHTML += `
+          <div class="traffic-item ${isToday ? 'alert-warning' : ''}">
+            <strong>${incident.title}</strong><br>
+            ${incident.description}<br>
+            <small>Severity: ${incident.severity} | ${incidentDateStr}, ${incidentTimeStr}</small>
+          </div>
+        `;
+      }
+
+      alertsContainer.innerHTML = trafficHTML;
+    } catch (err) {
+      console.error("Traffic error:", err);
+      document.getElementById("trafficAlerts").innerHTML += `
+        <div class="alert alert-danger">
+          Failed to fetch traffic data.
+        </div>
+      `;
+    }
+  }
+
+  function extractEpoch(dotNetTimeStr) {
+    const match = /\/Date\((\d+)\)\//.exec(dotNetTimeStr);
+    return match ? parseInt(match[1]) : 0;
+  }
+
+  // === ELEVATION FUNCTIONS ===
+  async function getElevationProfile() {
+    const API_KEY = document.getElementById('apiKey').value.trim();
+    if (!API_KEY) return alert("Please enter your API key.");
+
+    const srcText = document.getElementById('elevationStart').value;
+    const dstText = document.getElementById('elevationEnd').value;
+
+    if (!srcText || !dstText) return alert("Please enter both start and end locations.");
+
+    const srcLoc = await geocode(srcText, API_KEY);
+    const dstLoc = await geocode(dstText, API_KEY);
+    if (!srcLoc || !dstLoc) return alert("Location not found.");
+
+    // Set view and clear previous route
+    map.setView(srcLoc, 8);
+    if (routeLine) map.removeLayer(routeLine);
+    trafficLines.forEach(line => map.removeLayer(line));
+    trafficLines = [];
+
+    try {
+      const routeRes = await fetch(`${BASE_URL}/route/${srcLoc.lat},${srcLoc.lng}/${dstLoc.lat},${dstLoc.lng}/1/?api_key=${API_KEY}`);
+      const routeData = await routeRes.json();
+
+      const path = routeData.resourceSet?.[0]?.resources?.[0]?.routePath?.line?.coordinates;
+      if (!path || path.length === 0) return alert("Route not found.");
+
+      const leafletPath = path.map(([lat, lng]) => [lat, lng]);
+      routeLine = L.polyline(leafletPath, { color: 'green', weight: 4 }).addTo(map);
+
+      // Add start and end markers
+      const startMarker = L.marker([srcLoc.lat, srcLoc.lng], { title: "Start" }).addTo(map);
+      const endMarker = L.marker([dstLoc.lat, dstLoc.lng], { title: "End" }).addTo(map);
+      trafficLines.push(startMarker, endMarker);
+
+      map.fitBounds(routeLine.getBounds());
+
+      const sampled = [];
+      const step = Math.floor(path.length / SAMPLE_COUNT);
+      for (let i = 0; i < path.length; i += step) {
+        sampled.push(path[i]);
+        if (sampled.length === SAMPLE_COUNT) break;
+      }
+
+      const pointParam = sampled.map(p => `${p[0]},${p[1]}`).join(',');
+      const elevationRes = await fetch(`${BASE_URL}/elevation/polyline/?points=${pointParam}&samples=${SAMPLE_COUNT}&heights=sealevel&api_key=${API_KEY}`);
+      const elevationData = await elevationRes.json();
+      const elevations = elevationData.resourceSet?.[0]?.resources?.[0]?.elevations;
+
+      if (!elevations || elevations.length === 0) return alert("Elevation data not found.");
+
+      const distance = [0];
+      for (let i = 1; i < sampled.length; i++) {
+        distance.push(distance[i - 1] + getDistance(
+          { lat: sampled[i - 1][0], lng: sampled[i - 1][1] },
+          { lat: sampled[i][0], lng: sampled[i][1] }
+        ));
+      }
+
+      drawElevationChart(distance, elevations);
+      
+      // Switch to the elevation tab
+      document.getElementById('elevation-tab').click();
+
+    } catch (err) {
+      console.error("Elevation error:", err);
+      alert("Failed to get elevation data.");
+    }
+  }
+
+  async function geocode(address, apiKey) {
+    try {
+      const res = await fetch(`${BASE_URL}/geocoding/${encodeURIComponent(address)}/?api_key=${apiKey}`);
+      const data = await res.json();
+      if (!data || !data.resourceSet || !Array.isArray(data.resourceSet) || data.resourceSet.length === 0) return null;
+
+      const first = data.resourceSet[0];
+      const lat = first.geo?.latitude || first.address?.geo?.latitude;
+      const lng = first.geo?.longitude || first.address?.geo?.longitude;
+
+      if (typeof lat !== "number" || typeof lng !== "number") return null;
+
+      return { lat: parseFloat(lat), lng: parseFloat(lng) };
+    } catch (err) {
+      console.error("Geocoding error:", err);
+      return null;
+    }
+  }
+
+  function getDistance(a, b) {
+    const R = 6371; // Radius of the Earth in km
+    const dLat = deg2rad(b.lat - a.lat);
+    const dLon = deg2rad(b.lng - a.lng);
+    const lat1 = deg2rad(a.lat);
+    const lat2 = deg2rad(b.lat);
+    const a_ = Math.sin(dLat / 2) ** 2 + Math.sin(dLon / 2) ** 2 * Math.cos(lat1) * Math.cos(lat2);
+    return R * 2 * Math.atan2(Math.sqrt(a_), Math.sqrt(1 - a_));
+  }
+
+  function deg2rad(deg) {
+    return deg * (Math.PI / 180);
+  }
+
+  function drawElevationChart(xLabels, yValues) {
+    const ctx = document.getElementById('elevationChart').getContext('2d');
+    if (window.elevationChart instanceof Chart) {
+      window.elevationChart.destroy();
+    }
+
+    window.elevationChart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: xLabels.map(d => d.toFixed(2) + ' km'),
+        datasets: [{
+          label: 'Elevation (m)',
+          data: yValues,
+          borderColor: 'green',
+          fill: true,
+          backgroundColor: 'rgba(0,128,0,0.2)',
+          pointRadius: 2,
+          tension: 0.3
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          x: {
+            title: { display: true, text: 'Distance (km)' }
+          },
+          y: {
+            title: { display: true, text: 'Elevation (m)' }
+          }
+        },
+        plugins: {
+          legend: { display: true },
+          tooltip: {
+            callbacks: {
+              label: function(context) {
+                return `Elevation: ${context.raw}m`;
+              }
+            }
+          }
+        }
+      }
+    });
+  }
+
+  // === PLACES FUNCTIONS ===
+  async function fetchPlaces() {
+    const apiKey = document.getElementById('apiKey').value.trim();
+    if (!apiKey) return alert("Please enter your API key.");
+    if (!bbox) return alert("Draw a bounding box on the map first.");
+
+    try {
+      const url = `${BASE_URL}/spatialdata/?south=${bbox.south}&west=${bbox.west}&north=${bbox.north}&east=${bbox.east}&top=15&api_key=${apiKey}`;
+      const res = await fetch(url);
+      const data = await res.json();
+
+      const places = data.resourceSet || [];
+      document.getElementById('placesContainer').innerHTML = '';
+      markerLayer.clearLayers(); // Clear previous markers
+
+      if (places.length === 0) {
+        document.getElementById('placesContainer').innerHTML = `
+          <div class="col-12">
+            <div class="alert alert-info">No places found in the selected area. Try a different location.</div>
+          </div>
+        `;
+        return;
+      }
+
+      for (const place of places) {
+        const weather = await fetchWeather(place.Latitude, place.Longitude, apiKey);
+        showPlaceCard(place, weather);
+        addPlaceMarker(place, weather);
+      }
+
+      // Switch to the places tab
+      document.getElementById('places-tab').click();
+
+    } catch (err) {
+      console.error("Places error:", err);
+      alert("Failed to get nearby places.");
+    }
+  }
+
+  async function fetchWeather(lat, lng, apiKey) {
+    try {
+      const res = await fetch(`${BASE_URL}/weather/${lat}/${lng}/metric/?api_key=${apiKey}`);
+      const data = await res.json();
+      return data.weather_data?.current || {};
+    } catch (err) {
+      console.error("Weather error:", err);
+      return {};
+    }
+  }
+
+  function showPlaceCard(place, weather) {
+    const icon = weather.weather?.[0]?.icon || "01d";
+    const temp = weather.temp ? `${weather.temp}°C` : "N/A";
+    const condition = weather.weather?.[0]?.description || "Unknown";
+
+    const card = `
+      <div class="col-md-4 place-card">
+        <div class="card">
+          <div class="card-body">
+            <h5 class="card-title">${place.DisplayName}</h5>
+            <p class="card-text">${place.AddressLine || ''}, ${place.Locality || ''}, ${place.AdminDistrict || ''}</p>
+            <p class="mb-1"><strong>Phone:</strong> ${place.Phone || "N/A"}</p>
+            <p><strong>Weather:</strong> ${condition} <img src="https://openweathermap.org/img/wn/${icon}.png"> <strong>${temp}</strong></p>
+            <button class="btn btn-sm btn-outline-primary" onclick="map.setView([${place.Latitude}, ${place.Longitude}], 17)">View on Map</button>
+          </div>
+        </div>
+      </div>
+    `;
+    document.getElementById('placesContainer').insertAdjacentHTML('beforeend', card);
+  }
+
+  function addPlaceMarker(place, weather) {
+    const iconUrl = `https://openweathermap.org/img/wn/${weather.weather?.[0]?.icon || "01d"}.png`;
+    const popupContent = `
+      <strong>${place.DisplayName}</strong><br>
+      ${place.Locality || ''}, ${place.AdminDistrict || ''}<br>
+      <img src="${iconUrl}" style="width:24px; vertical-align:middle;"> ${weather.temp ? weather.temp + "°C" : "N/A"}
+    `;
+
+    const marker = L.marker([place.Latitude, place.Longitude])
+      .bindPopup(popupContent)
+      .addTo(markerLayer);
+  }
+
+  // Initialize Bootstrap components for tabs and tooltips
+  document.addEventListener('DOMContentLoaded', function() {
+    // Bootstrap js for tabs
+    const script = document.createElement('script');
+    script.src = 'https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js';
+    document.body.appendChild(script);
+  });
+</script>
+
+</body>
+</html>
