@@ -41,6 +41,7 @@
       border-radius: 0 0 8px 8px;
       background-color: #fff;
       margin-bottom: 20px;
+      min-height: 300px; /* Ensure container has a minimum height */
     }
     .traffic-list { 
       max-height: 300px; 
@@ -54,11 +55,12 @@
       margin-bottom: 15px; 
     }
     #elevationChart { 
-      height: 300px;
-      width: 100%;
+      height: 300px !important; /* Fixed height */
+      width: 100% !important; /* Full width of parent */
       margin-top: 20px;
       border-radius: 8px;
       box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      display: block; /* Ensure canvas is block-level */
     }
     .input-group {
       margin-bottom: 10px;
@@ -134,7 +136,7 @@
         <div class="col-md-5">
           <div class="input-group">
             <span class="input-group-text">To</span>
-            <input id="elevationEnd" class="form-control" placeholder="End address">
+            <input id="elevationEnd" class=" form-control" placeholder="End address">
           </div>
         </div>
         <div class="col-md-2">
@@ -211,7 +213,7 @@
     };
   });
 
-  // Initialize the tabs
+  // Initialize the tabs and handle resize
   document.addEventListener('DOMContentLoaded', function() {
     const triggerTabList = [].slice.call(document.querySelectorAll('#mapTabs button'));
     triggerTabList.forEach(function(triggerEl) {
@@ -222,10 +224,14 @@
       });
     });
 
-    // Set up event listener for tab changes
+    // Handle tab changes and resize
     document.querySelectorAll('#mapTabs button').forEach(tab => {
       tab.addEventListener('shown.bs.tab', event => {
-        map.invalidateSize(); // Resize map when tab is shown
+        map.invalidateSize(); // Resize Leaflet map
+        if (event.target.id === 'elevation-tab' && window.elevationChart) {
+          // Resize Chart.js chart when Elevation tab is shown
+          window.elevationChart.resize();
+        }
       });
     });
   });
@@ -452,8 +458,19 @@
         ));
       }
 
-      drawElevationChart(distance, elevations);
-      
+      // Draw chart only when Elevation tab is active
+      if (document.querySelector('#elevation-panel').classList.contains('show')) {
+        drawElevationChart(distance, elevations);
+      } else {
+        // Wait for tab to be shown before drawing
+        const elevationTab = document.getElementById('elevation-tab');
+        const handler = () => {
+          drawElevationChart(distance, elevations);
+          elevationTab.removeEventListener('shown.bs.tab', handler);
+        };
+        elevationTab.addEventListener('shown.bs.tab', handler);
+      }
+
       // Switch to the elevation tab
       document.getElementById('elevation-tab').click();
 
@@ -518,7 +535,7 @@
       },
       options: {
         responsive: true,
-        maintainAspectRatio: false,
+        maintainAspectRatio: false, // Allow scaling to fit container
         scales: {
           x: {
             title: { display: true, text: 'Distance (km)' }
